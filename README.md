@@ -32,7 +32,7 @@ The programs in the PartiPy suite have minimal dependencies (other than Python 3
 | `plot_lento.py` | Regenerate a LentoPlot SVG from an existing TSV (no reanalysis) |
 | `compare_trees.py` | Compare internal branch lengths of two Newick trees or a Newick tree and compatibility data |
 | `newick_to_biparts.py` | Extract bipartitions from a Newick tree and write in bipartition format (used by other PartiPy programs). Output hexadecimal indices of bipartitions |
-| `paup_pstats.py` | Parsimony statistics (CI, RI, RC) via PAUP\* for binary matrices |
+| `paup_pstats.py` | Parsimony statistics (CI, RI, RC) via PAUP\* for binary matrices generated using `sample_loci.py` |
 
 All programs except `paup_pstats.py` require only Python 3 (standard library 
 only — no third-party packages).  `paup_pstats.py` additionally requires 
