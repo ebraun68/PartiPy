@@ -1,7 +1,7 @@
 # PartiPy
 
 A Python suite for compatibility and partition analysis of aligned sequence data and binary 
-rare genomic change data (such as transposable element presence/absence data). 
+rare genomic change data (such as transposable element insertion presence/absence data). 
 
 The suite implements and extends ideas from two programs that are no longer publicly available:
 
