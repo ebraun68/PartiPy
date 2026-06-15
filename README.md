@@ -32,6 +32,7 @@ The programs in the PartiPy suite have minimal dependencies (other than Python 3
 | `plot_lento.py` | Regenerate a LentoPlot SVG from an existing TSV (no reanalysis) |
 | `compare_trees.py` | Compare internal branch lengths of two Newick trees or a Newick tree and compatibility data |
 | `newick_to_biparts.py` | Extract bipartitions from a Newick tree and write in bipartition format (used by other PartiPy programs). Output hexadecimal indices of bipartitions |
+| `groups_to_biparts.py` | Convert manually-specified taxon groupings to bipartition codes (binary and Jakobsen hex) |
 | `paup_pstats.py` | Parsimony statistics (CI, RI, RC) via PAUP\* for binary matrices generated using `sample_loci.py` |
 
 All programs except `paup_pstats.py` require only Python 3 (standard library 
@@ -907,6 +908,113 @@ python3 partcompat.py -i alignment.fasta -o results \
 
 The `#` comment lines at the top of each file are ignored, so the concatenated file remains 
 valid without any editing.
+
+---
+
+## groups_to_biparts.py
+
+Converts manually-specified taxon groupings to bipartition codes (binary
+string and Jakobsen hex), optionally with support/conflict values looked up
+from a TSV.  Complements `newick_to_biparts.py`: rather than extracting
+bipartitions from a tree, this lets you write out a focused set of candidate
+splits by hand -- for example, competing resolutions of a particular node
+observed across several trees -- and immediately get codes suitable for
+`--tree-biparts`, `--plot-biparts`, `--bipart-order`, `--omit-biparts`, or
+`id_compat.py`'s `--bipart-file`, and/or see how much support/conflict each
+candidate has in an existing analysis.
+
+### Usage
+
+```
+groups_to_biparts.py GROUPS_FILE --tax-order FILE [-o PREFIX] [--tsv TSV]
+```
+
+| Argument | Description |
+|---|---|
+| `GROUPS_FILE` | File of manually-specified taxon groupings (positional) |
+| `--tax-order FILE` | Taxon order file (one name per line); required |
+| `-o` / `--outfile PREFIX` | Optional; writes `PREFIX.biparts` |
+| `--tsv FILE` | Optional; TSV from `partcompat.py`, `sample_loci.py` (`summary.tsv`), or `analyze_loci.py` -- looks up support/conflict values for each bipartition |
+
+### Groups file format
+
+One bipartition per line.  `#` comments and blank lines are ignored.  Two
+forms are accepted:
+
+**Full bipartition** -- comma-separated taxa on each side of `|`:
+
+```
+tax1,tax2,tax3|tax4,tax5,tax6
+```
+
+**Every taxon in `--tax-order` must appear on exactly one side** -- no taxon
+may be missing, duplicated, or unrecognized.
+
+**Half bipartition** -- comma-separated taxa, no `|`:
+
+```
+tax1,tax4
+```
+
+The listed taxa become one side; every *other* taxon in `--tax-order`
+becomes the other side automatically.  Every listed taxon must be in
+`--tax-order`, with no duplicates, and the list must not be the entire taxon
+set (which would leave the other side empty).  This is convenient for
+specifying only the smaller side of a bipartition -- e.g. four taxa out of
+twenty-seven -- without writing out the remaining 23 names.
+
+Both forms are intentionally strict: rather than silently masking a
+misspelled taxon name, any inconsistency is reported as an error naming the
+offending line, taxon, and problem (unrecognized name, duplicate, missing
+taxon, or -- for half bipartitions -- a list covering all taxa).  **Every
+line in the file is checked, and all problems found are reported together**
+in a single summary, so a file with several mistakes can be corrected in one
+pass rather than one error at a time.
+
+### Output
+
+stdout reports, one line per input bipartition (tab-separated, with a header
+row): the binary string, the Jakobsen hex code, the **canonical grouping**
+(both sides, in `--tax-order` order, derived from the resulting bitmask), and
+the original input line.  The canonical grouping is shown for every line --
+for a full bipartition it is simply a normalized redisplay; for a half
+bipartition it shows exactly what the complementary side resolved to,
+serving as an immediate check that the half-specification was correct.  If
+`--tsv` is given, four additional columns (`support_raw`, `conflict_raw`,
+`support_norm`, `conflict_norm`) are inserted between the hex code and the
+grouping; a bipartition absent from the TSV is reported with all four values
+as `0.0000`.
+
+With `-o PREFIX`, `PREFIX.biparts` is also written -- a standard bipartition
+file (binary strings, one per line) with `#`-comment lines at the top giving
+the taxon order, and for each bipartition its hex code, canonical grouping,
+support/conflict values (if `--tsv` was given), and a `[half-specified]` tag
+for lines that used the half-bipartition form.  This file can be passed
+directly to `-t`/`--tree-biparts`, `-p`/`--plot-biparts`,
+`-b`/`--bipart-order`, `--omit-biparts`, or `id_compat.py`'s `--bipart-file`.
+
+### Example
+
+```bash
+python3 groups_to_biparts.py candidates.txt --tax-order taxa.txt \
+    -o candidates --tsv results.tsv
+```
+
+```
+# candidates.txt
+t1,t2|t3,t4,t5,t6
+t1,t2,t3|t4,t5,t6
+# half-specified: smaller side only
+t5,t6
+```
+
+reports the support/conflict values from `results.tsv` for each candidate
+and produces `candidates.biparts`, usable immediately as e.g.:
+
+```bash
+python3 id_compat.py -i alignment.fasta --tax-order taxa.txt \
+    -o site_results --bipart-file candidates.biparts
+```
 
 ---
 
