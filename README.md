@@ -33,6 +33,7 @@ The programs in the PartiPy suite have minimal dependencies (other than Python 3
 | `compare_trees.py` | Compare internal branch lengths of two Newick trees or a Newick tree and compatibility data |
 | `newick_to_biparts.py` | Extract bipartitions from a Newick tree and write in bipartition format (used by other PartiPy programs). Output hexadecimal indices of bipartitions |
 | `groups_to_biparts.py` | Convert manually-specified taxon groupings to bipartition codes (binary and Jakobsen hex) |
+| `label_tree.py` | Label internal nodes of a newick tree with Jakobsen hex bipartition codes |
 | `paup_pstats.py` | Parsimony statistics (CI, RI, RC) via PAUP\* for binary matrices generated using `sample_loci.py` |
 
 All programs except `paup_pstats.py` require only Python 3 (standard library 
