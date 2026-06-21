@@ -1018,6 +1018,61 @@ python3 id_compat.py -i alignment.fasta --tax-order taxa.txt \
 ```
 
 ---
+## label_tree.py
+
+Roots a Newick tree on a specified outgroup (the first taxon in `--tax-order`)
+and labels all non-trivial internal nodes with their Jakobsen hex bipartition
+codes, producing a labeled Newick that can be loaded into FigTree or any
+other tree viewer that supports internal node labels.
+
+Hex codes are computed using the bit ordering in `--tax-order`, so they match
+exactly the codes produced by all other PartiPy programs given the same
+`--tax-order` file, making it straightforward to cross-reference branches in
+a tree visualization with columns in a LentoPlot or rows in a bipartition TSV.
+
+### Usage
+
+```
+label_tree.py TREE.nwk --tax-order FILE [-o PREFIX]
+```
+
+| Argument | Description |
+|---|---|
+| `TREE.nwk` | Input Newick tree file (positional) |
+| `--tax-order FILE` | Taxon order file (one name per line).  The **first** taxon is used as the outgroup for rooting.  Bit positions in the hex codes follow this order. |
+| `-o` / `--outfile PREFIX` | Optional; writes `PREFIX.nwk` |
+| `--label-prefix STR` | String prepended to every hex label (default: none) |
+
+### Validation
+
+Before re-rooting, the leaf set in the tree is compared against `--tax-order`:
+taxa present in one but absent from the other are listed, and the program exits.
+Both discrepancy types are reported together so all inconsistencies can be
+corrected in one pass.
+
+### Re-rooting
+
+The tree is re-rooted between the outgroup leaf and its parent.  Branch lengths
+are preserved (total distances unchanged).  If the old root was bifurcating,
+it is absorbed by summing branch lengths, leaving no degree-2 nodes.
+
+### Labeling
+
+All non-trivial internal nodes (both sides >= 2 taxa) receive a Jakobsen hex
+label.  The root node and nodes defining a single-taxon split receive no label.
+A string can be prepended to the hex bipartition codes using `--label-prefix STR`.
+The `--label-prefix STR` feature was added because some tree visualization programs 
+fail to render hex codes properly.
+
+### Example
+
+```bash
+python3 label_tree.py tree.nwk --tax-order taxa.txt -o labeled
+```
+
+Load `labeled.nwk` into FigTree; enable Node Labels to see hex codes on the tree.
+
+---
 
 ## paup_pstats.py
 
