@@ -6,7 +6,9 @@ Run with: python3 test_partcompat.py
 """
 
 import sys
-sys.path.insert(0, '/home/claude')
+import os
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
 
 from partcompat import (
     _canonicalize,
@@ -386,6 +388,158 @@ bm_11010 = 0b11010  # 26
 bm_10100 = 0b10100  # 20
 
 check("known: bm 11100 has support", support5.get(bm_11100, 0) > 0, True)
+
+# ---------------------------------------------------------------------------# ---------------------------------------------------------------------------
+# label_tree.py tests
+# ---------------------------------------------------------------------------
+from label_tree import (
+    parse_newick, get_leaves, find_leaf_path, reroot, label_nodes, newick_str
+)
+
+print("\n--- label_tree.py: Newick parsing ---")
+
+nwk_simple = "((t1:0.1,t2:0.2):0.3,(t3:0.4,(t4:0.5,(t5:0.6,t6:0.7):0.8):0.9):1.0);"
+tree_simple = parse_newick(nwk_simple)
+check("parse: 6 leaves", len(get_leaves(tree_simple)), 6)
+check("parse: root has 2 children", len(tree_simple['children']), 2)
+
+nwk_nolen = "((t1,t2),(t3,(t4,(t5,t6))));"
+tree_nolen = parse_newick(nwk_nolen)
+check("parse no branch lengths: 6 leaves", len(get_leaves(tree_nolen)), 6)
+
+nwk_trifurc = "((t1,t2),(t3,t4),(t5,t6));"
+tree_tri = parse_newick(nwk_trifurc)
+check("parse trifurcation: root has 3 children", len(tree_tri['children']), 3)
+
+print("\n--- label_tree.py: re-rooting ---")
+
+order6 = ['t1','t2','t3','t4','t5','t6']
+
+# Root on t1: path = [root, (t1,t2), t1]; old root has 2 children → absorb
+rerooted = reroot(parse_newick(nwk_simple), 't1')
+leaves_r = sorted(get_leaves(rerooted))
+check("reroot: all 6 leaves present", leaves_r, ['t1','t2','t3','t4','t5','t6'])
+check("reroot: new root has 2 children", len(rerooted['children']), 2)
+check("reroot: first child is outgroup t1", rerooted['children'][0]['name'], 't1')
+check("reroot: t1 branch length preserved", rerooted['children'][0]['branch_length'], 0.1)
+
+# Branch length preservation: total distance t1→t3 should be unchanged
+# Original: t1(0.1) + (t1t2 node 0.3) + (t3t4t5t6 node 1.0) + t3(0.4) = 1.8
+# After reroot+absorb: t1(0.1) + (1.3) + t3(0.4) = 1.8
+subtree = rerooted['children'][1]   # the ingroup
+# Find the branch to t3's containing clade
+def find_bl(node, target, acc):
+    if not node['children'] and node['name'] == target:
+        return acc
+    for child in node['children']:
+        bl = child['branch_length'] or 0.0
+        result = find_bl(child, target, acc + bl)
+        if result is not None:
+            return result
+    return None
+
+dist_t1_to_t3 = (rerooted['children'][0]['branch_length'] or 0.0) + \
+                find_bl(rerooted['children'][1], 't3',
+                        rerooted['children'][1]['branch_length'] or 0.0)
+check("reroot: t1→t3 distance preserved", round(dist_t1_to_t3, 6), round(1.8, 6))
+
+# Reroot when outgroup is direct child of root (n=2 path)
+nwk_direct = "(t1:0.5,(t2:0.1,(t3:0.2,(t4:0.3,(t5:0.4,t6:0.5):0.6):0.7):0.8):0.9);"
+rerooted_direct = reroot(parse_newick(nwk_direct), 't1')
+check("reroot direct: 6 leaves", sorted(get_leaves(rerooted_direct)),
+      ['t1','t2','t3','t4','t5','t6'])
+check("reroot direct: first child is t1",
+      rerooted_direct['children'][0]['name'], 't1')
+
+# Trifurcating root: old root has 3 children, 1 removed → 2 remain → NOT absorbed
+rerooted_tri = reroot(parse_newick(nwk_trifurc), 't1')
+leaves_tri = sorted(get_leaves(rerooted_tri))
+check("reroot trifurc: all 6 leaves", leaves_tri, ['t1','t2','t3','t4','t5','t6'])
+check("reroot trifurc: 2 top-level children", len(rerooted_tri['children']), 2)
+
+print("\n--- label_tree.py: hex labeling ---")
+
+# Known 6-taxon tree with tax-order [t1..t6]
+# After reroot on t1, internal nodes should get predictable hex codes.
+# Clade {t5,t6}: last 2 taxa, jak_val has bits 0,1 set = 3
+# Clade {t4,t5,t6}: last 3 taxa, bits 0,1,2 set = 7
+# Clade {t3,t4,t5,t6}: last 4, bits 0,1,2,3 = F
+rerooted6 = reroot(parse_newick(nwk_nolen), 't1')
+label_nodes(rerooted6, order6, 6)
+
+def find_label(node, clade_leaves):
+    """Find the label of the internal node whose clade is exactly clade_leaves."""
+    if not node['children']:
+        return None
+    leaves = frozenset(get_leaves(node))
+    if leaves == frozenset(clade_leaves):
+        return node.get('name', '')
+    for child in node['children']:
+        result = find_label(child, clade_leaves)
+        if result is not None:
+            return result
+    return None
+
+check("label: {t5,t6} = '3'",       find_label(rerooted6, ['t5','t6']), '3')
+check("label: {t4,t5,t6} = '7'",    find_label(rerooted6, ['t4','t5','t6']), '7')
+check("label: {t3,t4,t5,t6} = 'F'", find_label(rerooted6, ['t3','t4','t5','t6']), 'F')
+check("label: {t2,t3,t4,t5,t6} trivial (not labeled)",
+      find_label(rerooted6, ['t2','t3','t4','t5','t6']), '')
+
+# Test --label-prefix: should prepend to every non-empty label
+rerooted6p = reroot(parse_newick(nwk_nolen), 't1')
+label_nodes(rerooted6p, order6, 6, prefix='b_')
+check("label prefix: {t5,t6} = 'b_3'", find_label(rerooted6p, ['t5','t6']), 'b_3')
+check("label prefix: {t3,t4,t5,t6} = 'b_F'",
+      find_label(rerooted6p, ['t3','t4','t5','t6']), 'b_F')
+
+print("\n--- label_tree.py: Newick serialization ---")
+
+rerooted6_nolen = reroot(parse_newick(nwk_nolen), 't1')
+label_nodes(rerooted6_nolen, order6, 6)
+serialized = newick_str(rerooted6_nolen, is_root=True)
+check("serialize: ends with ';'", serialized.endswith(';'), True)
+check("serialize: 6 leaves parseable",
+      sorted(get_leaves(parse_newick(serialized))),
+      ['t1','t2','t3','t4','t5','t6'])
+# Labels should appear in the serialized string
+check("serialize: label '3' present", '3' in serialized, True)
+check("serialize: label 'F' present", 'F' in serialized, True)
+
+print("\n--- label_tree.py: validation (mismatch detection) ---")
+import subprocess, sys as _sys
+result = subprocess.run(
+    [_sys.executable, 'label_tree.py',
+     '/tmp/test6.nwk', '--tax-order', '/tmp/taxorder6.txt'],
+    capture_output=True, text=True, cwd=_HERE
+)
+# Write the test tree
+import os as _os
+with open('/tmp/test6.nwk', 'w') as _f:
+    _f.write("((t1,t2),(t3,(t4,(t5,t6))));\n")
+with open('/tmp/taxorder6.txt', 'w') as _f:
+    _f.write('\n'.join(['t1','t2','t3','t4','t5','t6']) + '\n')
+
+result_ok = subprocess.run(
+    [_sys.executable, 'label_tree.py',
+     '/tmp/test6.nwk', '--tax-order', '/tmp/taxorder6.txt'],
+    capture_output=True, text=True, cwd=_HERE
+)
+check("validation: valid tree exits 0", result_ok.returncode, 0)
+check("validation: output contains semicolon", ';' in result_ok.stdout, True)
+
+# Bad tax-order (extra taxon not in tree)
+with open('/tmp/bad_order.txt', 'w') as _f:
+    _f.write('\n'.join(['t1','t2','t3','t4','t5','t7']) + '\n')
+result_bad = subprocess.run(
+    [_sys.executable, 'label_tree.py',
+     '/tmp/test6.nwk', '--tax-order', '/tmp/bad_order.txt'],
+    capture_output=True, text=True, cwd=_HERE
+)
+check("validation: mismatch exits non-zero", result_bad.returncode != 0, True)
+check("validation: mismatch reports both directions",
+      'In tree but not in --tax-order' in result_bad.stderr and
+      'In --tax-order but not in tree' in result_bad.stderr, True)
 
 # ---------------------------------------------------------------------------
 print(f"\n=== Results: {PASS} passed, {FAIL} failed ===")
